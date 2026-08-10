@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "engineering-automation-platform"
+version = "0.1.0"
+description = "Typed workflows and integrations for engineering automation"
+authors = ["Jaden Kodjo Miles"]
+readme = "README.md"
+packages = [{ include = "engineering_automation", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "1.18.2"
+pytest = "8.4.2"
+ruff = "0.13.3"
+
+[build-system]
+requires = ["poetry-core==2.2.1"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+
