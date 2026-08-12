@@ -1,13 +1,14 @@
-[tool.poetry]
+[project]
 name = "engineering-automation-platform"
 version = "0.1.0"
 description = "Typed workflows and integrations for engineering automation"
-authors = ["Jaden Kodjo Miles"]
+authors = [{ name = "Jaden Kodjo Miles" }]
 readme = "README.md"
-packages = [{ include = "engineering_automation", from = "src" }]
+requires-python = ">=3.12,<4.0"
+dependencies = ["httpx==0.28.1"]
 
-[tool.poetry.dependencies]
-python = ">=3.12,<4.0"
+[tool.poetry]
+packages = [{ include = "engineering_automation", from = "src" }]
 
 [tool.poetry.group.dev.dependencies]
 mypy = "1.18.2"
@@ -33,4 +34,3 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 python_version = "3.12"
 strict = true
 files = ["src", "tests"]
-
