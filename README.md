@@ -33,6 +33,11 @@ management client and a production webhook adapter. It supports cursor-safe
 workflow discovery, workflow activation and deactivation, execution inspection
 and deletion, signed event payloads, idempotency headers, and bounded retries.
 
+The fifth increment adds provider-neutral notification orchestration with
+recipient preferences, priority and topic suppression, fan-out and ordered
+fallback delivery, atomic time-window deduplication, bounded concurrency,
+failure isolation, and immutable audit reports.
+
 ## Development
 
 The project requires Python 3.12 or newer and Poetry.
@@ -53,25 +58,22 @@ to `main`.
 
 ```text
 src/engineering_automation/
-├── events/
-│   ├── conditions.py       # safe field resolution and condition evaluation
-│   ├── dispatch.py         # bounded, failure-isolated handler execution
-│   ├── models.py           # immutable event and routing contracts
-│   └── router.py           # deterministic rule evaluation
-├── n8n/
-│   ├── client.py           # workflow and execution management API
-│   ├── config.py           # API and production webhook configuration
-│   ├── handler.py          # signed event-to-workflow adapter
-│   └── models.py           # validated workflow and execution responses
-├── port/                   # authenticated catalog and action operations
-└── webhooks/
-    ├── delivery.py         # retry orchestration and delivery reporting
-    ├── httpx_transport.py  # production async HTTP transport
-    ├── models.py           # immutable domain contracts
-    ├── signing.py          # canonical encoding and HMAC signatures
-    └── transport.py        # transport protocol
+├── domain/                 # immutable entities and pure policy
+├── application/
+│   ├── ports/              # abstract dependency boundaries
+│   ├── services/           # focused application services
+│   └── use_cases/          # business operation orchestration
+├── infrastructure/         # concrete HTTP and persistence adapters
+├── interfaces/             # inbound event adapters
+├── bootstrap/              # concrete dependency composition
+├── port/                   # Port provider adapter
+├── n8n/                    # n8n provider adapter
+├── events/                 # event domain and compatibility API
+├── notifications/          # compatibility exports and façade
+└── webhooks/               # compatibility exports
 ```
 
-Provider-specific integrations live outside the event and webhook cores. Port,
-n8n, and notification adapters can therefore share the same filtering,
-routing, delivery, signing, and retry rules without duplicating them.
+Provider-specific integrations live outside the domain and application cores.
+Port and n8n remain separate clients because their APIs and authentication are
+different, while use cases depend only on narrow ports. See
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the dependency rules and rationale.

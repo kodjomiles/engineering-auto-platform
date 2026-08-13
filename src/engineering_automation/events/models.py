@@ -9,17 +9,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
-
-def _freeze(value: Any) -> Any:
-    """Recursively detach mutable event data from its caller."""
-
-    if isinstance(value, Mapping):
-        return MappingProxyType({str(key): _freeze(item) for key, item in value.items()})
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, (set, frozenset)):
-        return frozenset(_freeze(item) for item in value)
-    return value
+from engineering_automation.domain.values import deep_freeze
 
 
 class ConditionOperator(StrEnum):
@@ -67,7 +57,7 @@ class EngineeringEvent:
             for name, value in self.labels.items()
             if str(name).strip()
         }
-        object.__setattr__(self, "payload", _freeze(self.payload))
+        object.__setattr__(self, "payload", deep_freeze(self.payload))
         object.__setattr__(self, "labels", MappingProxyType(normalized_labels))
 
 
@@ -93,7 +83,7 @@ class Condition:
         ):
             raise ValueError("in conditions require a collection value")
         object.__setattr__(self, "field", normalized)
-        object.__setattr__(self, "value", _freeze(self.value))
+        object.__setattr__(self, "value", deep_freeze(self.value))
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,7 +156,7 @@ class DestinationResult:
         if self.duration_ms < 0:
             raise ValueError("duration_ms cannot be negative")
         if self.output is not None:
-            object.__setattr__(self, "output", _freeze(self.output))
+            object.__setattr__(self, "output", deep_freeze(self.output))
 
 
 @dataclass(frozen=True, slots=True)

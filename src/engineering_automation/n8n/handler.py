@@ -6,11 +6,11 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
+from engineering_automation.application.ports.webhooks import WebhookDelivery
+from engineering_automation.domain.webhooks import WebhookMessage
 from engineering_automation.events.models import EngineeringEvent
 from engineering_automation.n8n.config import N8nWebhookTarget
 from engineering_automation.n8n.errors import N8nWebhookError
-from engineering_automation.webhooks.delivery import WebhookDispatcher
-from engineering_automation.webhooks.models import WebhookMessage
 
 
 def _json_safe(value: Any) -> Any:
@@ -26,7 +26,7 @@ def _json_safe(value: Any) -> Any:
 class N8nWebhookHandler:
     """Deliver engineering events to an active n8n Webhook node."""
 
-    def __init__(self, target: N8nWebhookTarget, dispatcher: WebhookDispatcher) -> None:
+    def __init__(self, target: N8nWebhookTarget, dispatcher: WebhookDelivery) -> None:
         self._target = target
         self._dispatcher = dispatcher
 
