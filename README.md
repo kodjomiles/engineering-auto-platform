@@ -33,6 +33,11 @@ management client and a production webhook adapter. It supports cursor-safe
 workflow discovery, workflow activation and deactivation, execution inspection
 and deletion, signed event payloads, idempotency headers, and bounded retries.
 
+The fifth increment adds provider-neutral notification orchestration with
+recipient preferences, priority and topic suppression, fan-out and ordered
+fallback delivery, atomic time-window deduplication, bounded concurrency,
+failure isolation, and immutable audit reports.
+
 ## Development
 
 The project requires Python 3.12 or newer and Poetry.
@@ -63,6 +68,11 @@ src/engineering_automation/
 │   ├── config.py           # API and production webhook configuration
 │   ├── handler.py          # signed event-to-workflow adapter
 │   └── models.py           # validated workflow and execution responses
+├── notifications/
+│   ├── deduplication.py    # atomic time-window duplicate prevention
+│   ├── handler.py          # engineering-event routing adapter
+│   ├── models.py           # preferences, policy, and audit contracts
+│   └── service.py          # fan-out and ordered fallback orchestration
 ├── port/                   # authenticated catalog and action operations
 └── webhooks/
     ├── delivery.py         # retry orchestration and delivery reporting
