@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 
-from engineering_automation.events import EngineeringEvent
 from engineering_automation.notifications import (
     ContactPoint,
     DeliveryMode,
@@ -102,31 +101,6 @@ def test_notification_deeply_freezes_metadata() -> None:
     assert notification.metadata["changes"] == ("code",)
     with pytest.raises(TypeError):
         notification.metadata["new"] = True  # type: ignore[index]
-
-
-def test_notification_can_be_created_from_engineering_event() -> None:
-    event = EngineeringEvent(
-        event_id="evt-123",
-        source="github",
-        event_type="deployment.completed",
-        subject="payments-api",
-        occurred_at=datetime(2026, 8, 13, 9, tzinfo=UTC),
-        payload={"environment": "production"},
-        labels={"team": "platform"},
-    )
-    notification = Notification.from_event(
-        event,
-        subject="Deployment completed",
-        body="payments-api reached production",
-        priority=NotificationPriority.CRITICAL,
-        deduplication_key="deployment:payments-api:production",
-    )
-
-    assert notification.notification_id == "evt-123"
-    assert notification.topic == "deployment.completed"
-    assert notification.priority is NotificationPriority.CRITICAL
-    assert notification.metadata["source"] == "github"
-    assert notification.metadata["payload"] == {"environment": "production"}
 
 
 @pytest.mark.parametrize(

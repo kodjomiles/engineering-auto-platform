@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from urllib.parse import urlsplit
 
-from engineering_automation.webhooks.models import RetryPolicy
+from engineering_automation.domain.webhooks import RetryPolicy
 
 
 def _absolute_url(name: str, value: str) -> str:
