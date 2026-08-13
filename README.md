@@ -28,6 +28,11 @@ The third increment adds a provider-neutral engineering event engine with:
 - failure isolation for independent destinations; and
 - ordered, audit-ready dispatch reports.
 
+The fourth increment connects that engine to n8n with an API-key-authenticated
+management client and a production webhook adapter. It supports cursor-safe
+workflow discovery, workflow activation and deactivation, execution inspection
+and deletion, signed event payloads, idempotency headers, and bounded retries.
+
 ## Development
 
 The project requires Python 3.12 or newer and Poetry.
@@ -53,6 +58,11 @@ src/engineering_automation/
 │   ├── dispatch.py         # bounded, failure-isolated handler execution
 │   ├── models.py           # immutable event and routing contracts
 │   └── router.py           # deterministic rule evaluation
+├── n8n/
+│   ├── client.py           # workflow and execution management API
+│   ├── config.py           # API and production webhook configuration
+│   ├── handler.py          # signed event-to-workflow adapter
+│   └── models.py           # validated workflow and execution responses
 ├── port/                   # authenticated catalog and action operations
 └── webhooks/
     ├── delivery.py         # retry orchestration and delivery reporting
