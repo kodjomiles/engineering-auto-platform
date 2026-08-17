@@ -38,6 +38,12 @@ recipient preferences, priority and topic suppression, fan-out and ordered
 fallback delivery, atomic time-window deduplication, bounded concurrency,
 failure isolation, and immutable audit reports.
 
+The sixth increment proves the architecture across two external systems with a
+provider-neutral automation-registration use case. It aligns a desired n8n
+workflow activation state, records the automation in Port, validates every
+gateway response, and restores the original workflow state if registration
+fails. Port and n8n details remain isolated in infrastructure adapters.
+
 ## Development
 
 The project requires Python 3.12 or newer and Poetry.
@@ -63,7 +69,7 @@ src/engineering_automation/
 │   ├── ports/              # abstract dependency boundaries
 │   ├── services/           # focused application services
 │   └── use_cases/          # business operation orchestration
-├── infrastructure/         # concrete HTTP and persistence adapters
+├── infrastructure/         # concrete provider, HTTP, and persistence adapters
 ├── interfaces/             # inbound event adapters
 ├── bootstrap/              # concrete dependency composition
 ├── port/                   # Port provider adapter

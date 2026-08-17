@@ -35,6 +35,30 @@ and Single Responsibility principles.
 Application code must not construct or import those clients directly. A composition root supplies
 the required adapter through an application port when a use case needs provider behavior.
 
+## Register an automation
+
+`RegisterAutomation` demonstrates the dependency rule across both providers:
+
+```text
+AutomationDefinition
+        │
+        v
+RegisterAutomation ──> WorkflowManager port ──> N8nWorkflowManager ──> N8nClient
+        │
+        └────────────> AutomationCatalog port ─> PortAutomationCatalog ─> PortClient
+```
+
+The use case reads the current workflow state before making changes. It updates n8n only when the
+desired activation state differs, then upserts the Port catalog entity. If catalog registration
+fails after changing the workflow, it attempts to restore the original state. A failed restoration
+raises `AutomationRollbackError`, which retains both the registration and rollback failures for
+diagnosis. Gateway identity and state checks prevent an adapter from silently reporting success for
+the wrong resource.
+
+This orchestration belongs in the application layer because the ordering and compensation are
+business workflow rules. Provider payload translation stays in `infrastructure/adapters/`, and
+`bootstrap/automation.py` performs the concrete wiring.
+
 ## Compatibility packages
 
 The existing `notifications.*` and `webhooks.*` modules preserve established imports. They contain
