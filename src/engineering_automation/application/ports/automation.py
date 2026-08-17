@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Protocol
 
 from engineering_automation.domain.automation import (
     AutomationDefinition,
+    AutomationReconciliationReport,
     AutomationRegistration,
     CatalogReference,
     WorkflowReference,
@@ -30,3 +32,12 @@ class AutomationRegistrar(Protocol):
     """Register one provider-neutral automation definition."""
 
     async def execute(self, definition: AutomationDefinition) -> AutomationRegistration: ...
+
+
+class AutomationReconciler(Protocol):
+    """Reconcile multiple provider-neutral automation definitions."""
+
+    async def execute(
+        self,
+        definitions: Iterable[AutomationDefinition],
+    ) -> AutomationReconciliationReport: ...

@@ -82,6 +82,24 @@ This separation keeps batch execution policy independent from provider details a
 single-registration implementation to be supplied through `AutomationRegistrar` without changing
 the reconciliation use case.
 
+## Expose the HTTP interface
+
+The FastAPI application is an inbound adapter under `interfaces/http/`. Request schemas translate
+camel-case JSON into domain definitions, invoke `AutomationRegistrar` or `AutomationReconciler`,
+and translate domain results back into documented response schemas. The interface depends on
+application protocols and domain values; it never imports the concrete Port or n8n clients.
+
+```text
+HTTP request ─> FastAPI route ─> application port ─> use case ─> provider ports
+                     │                                  │
+                     └─ OpenAPI contracts               └─ domain policy
+```
+
+`bootstrap/api.py` is the composition root. It validates environment settings, creates provider
+clients, wires the use cases, supplies the service API key, and closes owned clients during the
+application lifespan. Health and documentation routes are public. Automation operations use an
+`X-API-Key` security scheme and compare credentials in constant time.
+
 ## Compatibility packages
 
 The existing `notifications.*` and `webhooks.*` modules preserve established imports. They contain
