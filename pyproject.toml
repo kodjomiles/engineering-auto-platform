@@ -5,7 +5,7 @@ description = "Typed workflows and integrations for engineering automation"
 authors = [{ name = "Jaden Kodjo Miles" }]
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
-dependencies = ["httpx==0.28.1"]
+dependencies = ["httpx==0.28.1", "fastapi==0.141.1", "uvicorn==0.52.3", "pydantic==2.13.4"]
 
 [tool.poetry]
 packages = [{ include = "engineering_automation", from = "src" }]

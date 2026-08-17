@@ -50,6 +50,27 @@ identifiers before performing writes, isolates failures between automations,
 and returns an immutable report in the same order as the input. Each item
 reuses the single-registration workflow and its compensation guarantees.
 
+The eighth increment exposes those use cases through an authenticated FastAPI
+interface. It includes strict request and response contracts, safe upstream
+errors, environment-driven composition, lifecycle cleanup, health checks, and
+generated OpenAPI, Swagger UI, and ReDoc documentation.
+
+## Serve the API
+
+See [`docs/API.md`](docs/API.md) for configuration, authentication, endpoint
+contracts, curl examples, responses, and errors. After configuring the required
+environment variables, start the service with:
+
+```bash
+poetry run uvicorn engineering_automation.bootstrap.api:create_environment_app --factory
+```
+
+The interactive API references are then available at:
+
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- ReDoc: `http://127.0.0.1:8000/redoc`
+- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
+
 ## Development
 
 The project requires Python 3.12 or newer and Poetry.
@@ -76,7 +97,7 @@ src/engineering_automation/
 │   ├── services/           # focused application services
 │   └── use_cases/          # business operation orchestration
 ├── infrastructure/         # concrete provider, HTTP, and persistence adapters
-├── interfaces/             # inbound event adapters
+├── interfaces/             # inbound event and HTTP adapters
 ├── bootstrap/              # concrete dependency composition
 ├── port/                   # Port provider adapter
 ├── n8n/                    # n8n provider adapter
