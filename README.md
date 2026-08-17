@@ -44,6 +44,12 @@ workflow activation state, records the automation in Port, validates every
 gateway response, and restores the original workflow state if registration
 fails. Port and n8n details remain isolated in infrastructure adapters.
 
+The seventh increment adds batch automation reconciliation. It processes
+desired definitions with configurable bounded concurrency, rejects duplicate
+identifiers before performing writes, isolates failures between automations,
+and returns an immutable report in the same order as the input. Each item
+reuses the single-registration workflow and its compensation guarantees.
+
 ## Development
 
 The project requires Python 3.12 or newer and Poetry.

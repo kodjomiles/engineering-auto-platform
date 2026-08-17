@@ -59,6 +59,29 @@ This orchestration belongs in the application layer because the ordering and com
 business workflow rules. Provider payload translation stays in `infrastructure/adapters/`, and
 `bootstrap/automation.py` performs the concrete wiring.
 
+## Reconcile automation definitions
+
+`ReconcileAutomations` composes the single-item use case rather than bypassing it:
+
+```text
+desired definitions ─> ReconcileAutomations ─> AutomationRegistrar port
+                              │                          │
+                              │ bounded concurrency      └─> RegisterAutomation
+                              │ failure isolation                    │
+                              v                                      v
+                 AutomationReconciliationReport             Port and n8n ports
+```
+
+The coordinator rejects duplicate automation identifiers before it performs any external write.
+Independent definitions run concurrently up to a configured limit, while `asyncio.gather` retains
+their input order in the final immutable report. An error for one definition becomes a failed
+outcome rather than cancelling unrelated work. `RegisterAutomation` still owns provider ordering,
+gateway validation, and compensation for every individual item.
+
+This separation keeps batch execution policy independent from provider details and allows another
+single-registration implementation to be supplied through `AutomationRegistrar` without changing
+the reconciliation use case.
+
 ## Compatibility packages
 
 The existing `notifications.*` and `webhooks.*` modules preserve established imports. They contain

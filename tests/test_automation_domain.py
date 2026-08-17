@@ -8,8 +8,11 @@ import pytest
 
 from engineering_automation.domain.automation import (
     AutomationDefinition,
+    AutomationReconciliation,
+    AutomationReconciliationReport,
     AutomationRegistration,
     CatalogReference,
+    ReconciliationState,
     WorkflowReference,
 )
 
@@ -86,3 +89,72 @@ def test_references_reject_blank_identity(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         factory()
+
+
+def make_registration(identifier: str = "automation-1") -> AutomationRegistration:
+    return AutomationRegistration(
+        identifier,
+        WorkflowReference("workflow-1", "Deploy", True),
+        CatalogReference(identifier),
+        True,
+    )
+
+
+def test_reconciliation_report_counts_ordered_outcomes() -> None:
+    report = AutomationReconciliationReport(
+        (
+            AutomationReconciliation(
+                "automation-1",
+                ReconciliationState.SUCCEEDED,
+                registration=make_registration(),
+            ),
+            AutomationReconciliation(
+                "automation-2",
+                ReconciliationState.FAILED,
+                error="RuntimeError: unavailable",
+            ),
+        )
+    )
+
+    assert [outcome.automation_id for outcome in report.outcomes] == [
+        "automation-1",
+        "automation-2",
+    ]
+    assert report.succeeded == 1
+    assert report.failed == 1
+    assert report.has_failures
+
+
+@pytest.mark.parametrize(
+    "outcome, message",
+    [
+        (
+            lambda: AutomationReconciliation(
+                "automation-1",
+                ReconciliationState.SUCCEEDED,
+            ),
+            "successful reconciliation",
+        ),
+        (
+            lambda: AutomationReconciliation(
+                "automation-1",
+                ReconciliationState.FAILED,
+            ),
+            "failed reconciliation",
+        ),
+        (
+            lambda: AutomationReconciliation(
+                "automation-1",
+                ReconciliationState.SUCCEEDED,
+                registration=make_registration("another-automation"),
+            ),
+            "must match",
+        ),
+    ],
+)
+def test_reconciliation_rejects_inconsistent_outcomes(
+    outcome: Callable[[], AutomationReconciliation],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        outcome()
