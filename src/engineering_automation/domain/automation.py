@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
 from engineering_automation.domain.values import deep_freeze
@@ -76,3 +77,61 @@ class AutomationRegistration:
         if not automation_id:
             raise ValueError("automation_id cannot be empty")
         object.__setattr__(self, "automation_id", automation_id)
+
+
+class ReconciliationState(str, Enum):
+    """Outcome of reconciling one automation definition."""
+
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class AutomationReconciliation:
+    """Auditable outcome for one definition in a reconciliation run."""
+
+    automation_id: str
+    state: ReconciliationState
+    registration: AutomationRegistration | None = None
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        automation_id = self.automation_id.strip()
+        if not automation_id:
+            raise ValueError("automation_id cannot be empty")
+        object.__setattr__(self, "automation_id", automation_id)
+
+        if self.state is ReconciliationState.SUCCEEDED:
+            if self.registration is None or self.error is not None:
+                raise ValueError("successful reconciliation requires only a registration")
+            if self.registration.automation_id != automation_id:
+                raise ValueError("registration automation_id must match reconciliation")
+        elif self.state is ReconciliationState.FAILED:
+            error = (self.error or "").strip()
+            if self.registration is not None or not error:
+                raise ValueError("failed reconciliation requires only an error")
+            object.__setattr__(self, "error", error)
+        else:
+            raise ValueError(f"unsupported reconciliation state: {self.state!r}")
+
+
+@dataclass(frozen=True, slots=True)
+class AutomationReconciliationReport:
+    """Ordered outcomes from reconciling a collection of automations."""
+
+    outcomes: tuple[AutomationReconciliation, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "outcomes", tuple(self.outcomes))
+
+    @property
+    def succeeded(self) -> int:
+        return sum(outcome.state is ReconciliationState.SUCCEEDED for outcome in self.outcomes)
+
+    @property
+    def failed(self) -> int:
+        return len(self.outcomes) - self.succeeded
+
+    @property
+    def has_failures(self) -> bool:
+        return self.failed > 0
