@@ -8,12 +8,33 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Security, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Path,
+    Request,
+    Response,
+    Security,
+    status,
+)
 from fastapi.security import APIKeyHeader
 
 from engineering_automation.application.ports.automation import (
     AutomationReconciler,
     AutomationRegistrar,
+)
+from engineering_automation.application.ports.inbound_webhooks import WebhookIngestor
+from engineering_automation.application.use_cases.ingest_webhook import (
+    WebhookAuthenticationError,
+    WebhookPayloadError,
+    WebhookProcessingError,
+)
+from engineering_automation.domain.inbound_webhooks import (
+    WebhookIngestionRequest,
+    WebhookIngestionState,
 )
 from engineering_automation.interfaces.http.schemas import (
     ApiErrorResponse,
@@ -22,6 +43,7 @@ from engineering_automation.interfaces.http.schemas import (
     ReconciliationRequest,
     ReconciliationResponse,
     RegistrationResponse,
+    WebhookIngestionResponse,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -32,6 +54,14 @@ API_KEY_HEADER = APIKeyHeader(
     description="Service API key configured by the operator.",
     auto_error=False,
 )
+WEBHOOK_SIGNATURE_HEADER = APIKeyHeader(
+    name="X-Webhook-Signature",
+    scheme_name="WebhookSignature",
+    description=(
+        "HMAC-SHA256 of `<X-Webhook-Timestamp>.<raw request body>` using the source secret."
+    ),
+    auto_error=False,
+)
 
 
 def create_app(
@@ -39,6 +69,7 @@ def create_app(
     reconciler: AutomationReconciler,
     *,
     api_key: str,
+    webhook_ingestor: WebhookIngestor | None = None,
     close: CloseCallback | None = None,
 ) -> FastAPI:
     """Create an API whose concrete provider dependencies are supplied externally."""
@@ -60,7 +91,8 @@ def create_app(
         summary="Coordinate Port catalog records and n8n workflow state.",
         description=(
             "Register individual engineering automations or reconcile a collection of desired "
-            "definitions. Automation operations require the `X-API-Key` header."
+            "definitions. Automation operations require the `X-API-Key` header; inbound events "
+            "use source-specific HMAC signatures."
         ),
         version="0.1.0",
         lifespan=lifespan,
@@ -69,6 +101,10 @@ def create_app(
             {
                 "name": "Automations",
                 "description": "Register and reconcile Port/n8n automation definitions.",
+            },
+            {
+                "name": "Webhooks",
+                "description": "Authenticate and idempotently process engineering events.",
             },
         ],
     )
@@ -157,4 +193,105 @@ def create_app(
         return ReconciliationResponse.from_domain(report)
 
     app.include_router(router)
+
+    webhook_error_responses: dict[int | str, dict[str, Any]] = {
+        401: {"model": ApiErrorResponse, "description": "Webhook authentication failed."},
+        502: {"model": ApiErrorResponse, "description": "Routed event processing failed."},
+        503: {"model": ApiErrorResponse, "description": "Webhook ingestion is not configured."},
+    }
+
+    @app.post(
+        "/v1/webhooks/events/{source}",
+        response_model=WebhookIngestionResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        responses=webhook_error_responses,
+        tags=["Webhooks"],
+        summary="Ingest a signed engineering event",
+    )
+    async def ingest_webhook(
+        source: Annotated[
+            str,
+            Path(
+                min_length=1,
+                max_length=64,
+                pattern=r"^[a-z0-9][a-z0-9._-]*$",
+            ),
+        ],
+        http_request: Request,
+        http_response: Response,
+        webhook_id: Annotated[
+            str,
+            Header(alias="X-Webhook-Id", min_length=1, max_length=256),
+        ],
+        timestamp: Annotated[int, Header(alias="X-Webhook-Timestamp", ge=0)],
+        signature: Annotated[str | None, Security(WEBHOOK_SIGNATURE_HEADER)],
+    ) -> WebhookIngestionResponse:
+        if webhook_ingestor is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "code": "webhook_ingestion_unavailable",
+                    "message": "webhook ingestion is not configured",
+                },
+            )
+        if signature is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "invalid_webhook",
+                    "message": "webhook authentication failed",
+                },
+            )
+        raw_body = await http_request.body()
+        ingestion_request = WebhookIngestionRequest(
+            webhook_id,
+            timestamp,
+            signature,
+            raw_body,
+            source,
+        )
+        try:
+            result = await webhook_ingestor.execute(ingestion_request)
+        except WebhookAuthenticationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "code": "invalid_webhook",
+                    "message": "webhook authentication failed",
+                },
+            ) from error
+        except WebhookPayloadError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "code": "invalid_webhook_payload",
+                    "message": "webhook event payload is invalid",
+                },
+            ) from error
+        except WebhookProcessingError as error:
+            LOGGER.warning(
+                "webhook processing failed",
+                extra={"webhook_id": webhook_id, "source": source},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "webhook_processing_failed",
+                    "message": "the event could not be processed",
+                },
+            ) from error
+        except Exception as error:
+            LOGGER.exception("webhook ingestion failed")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "webhook_processing_failed",
+                    "message": "the event could not be processed",
+                },
+            ) from error
+
+        if result.state is WebhookIngestionState.DUPLICATE:
+            http_response.status_code = status.HTTP_200_OK
+        return WebhookIngestionResponse.from_domain(result)
+
     return app
