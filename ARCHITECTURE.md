@@ -117,13 +117,16 @@ signed bytes ─> IngestWebhook ─> source secret port
 
 Receipt claims are scoped by source and webhook identifier. A duplicate is acknowledged without
 dispatching again. If decoding succeeds but a routed destination fails, the use case releases the
-claim so the provider may retry. `bootstrap/webhooks.py` selects the in-memory receipt adapter,
-static environment-backed secrets, JSON decoder, routing engine, and the first automation
-registration handler. These choices remain replaceable without changing authentication policy or
-the HTTP contract.
+claim so the provider may retry. `bootstrap/webhooks.py` selects static environment-backed secrets,
+the JSON decoder, routing engine, and the first automation registration handler. It accepts any
+`WebhookReceiptStore` and retains an in-memory default for isolated composition.
 
-The default receipt adapter protects one process. A multi-process or multi-replica deployment must
-supply a shared durable implementation of `WebhookReceiptStore` to preserve global idempotency.
+The production API composition supplies `SqliteWebhookReceiptStore`. Its composite primary key and
+immediate write transactions coordinate atomic claims between workers sharing one database file;
+the file also preserves unexpired claims across process restarts. Expired rows are removed inside
+the same claim transaction. This is an infrastructure policy: authentication and ingestion depend
+only on the application port. Replicas without a shared filesystem can therefore supply a remote
+durable adapter without changing the use case or HTTP contract.
 
 ## Compatibility packages
 

@@ -30,6 +30,7 @@ def test_settings_load_required_values_and_defaults() -> None:
     assert settings.webhook_max_age_seconds == 300
     assert settings.webhook_future_tolerance_seconds == 30
     assert settings.webhook_receipt_ttl_seconds == 86400
+    assert settings.webhook_receipt_database_path == ".data/webhook-receipts.sqlite3"
     assert "service-secret" not in repr(settings)
     assert "port-secret" not in repr(settings)
     assert "n8n-secret" not in repr(settings)
@@ -44,6 +45,7 @@ def test_settings_load_optional_region_endpoint_and_concurrency() -> None:
             WEBHOOK_MAX_AGE_SECONDS="600",
             WEBHOOK_FUTURE_TOLERANCE_SECONDS="45",
             WEBHOOK_RECEIPT_TTL_SECONDS="900",
+            WEBHOOK_RECEIPT_DATABASE_PATH="/var/lib/automation/receipts.sqlite3",
         )
     )
 
@@ -53,6 +55,7 @@ def test_settings_load_optional_region_endpoint_and_concurrency() -> None:
     assert settings.webhook_max_age_seconds == 600
     assert settings.webhook_future_tolerance_seconds == 45
     assert settings.webhook_receipt_ttl_seconds == 900
+    assert settings.webhook_receipt_database_path == "/var/lib/automation/receipts.sqlite3"
 
 
 @pytest.mark.parametrize(
@@ -109,6 +112,14 @@ def test_settings_require_all_credentials_and_endpoints(name: str) -> None:
                 "WEBHOOK_RECEIPT_TTL_SECONDS": "299",
             },
             "WEBHOOK_RECEIPT_TTL_SECONDS must be at least 300",
+        ),
+        (
+            {"WEBHOOK_RECEIPT_DATABASE_PATH": " "},
+            "WEBHOOK_RECEIPT_DATABASE_PATH cannot be empty",
+        ),
+        (
+            {"WEBHOOK_RECEIPT_DATABASE_PATH": ":memory:"},
+            "WEBHOOK_RECEIPT_DATABASE_PATH must identify a durable SQLite file",
         ),
     ],
 )

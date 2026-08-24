@@ -7,6 +7,7 @@ import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -15,6 +16,9 @@ from engineering_automation.application.use_cases.reconcile_automations import (
 )
 from engineering_automation.bootstrap.automation import build_automation_registration
 from engineering_automation.bootstrap.webhooks import build_webhook_ingestor
+from engineering_automation.infrastructure.persistence.sqlite_webhook_receipts import (
+    SqliteWebhookReceiptStore,
+)
 from engineering_automation.interfaces.http.api import create_app
 from engineering_automation.n8n.client import N8nClient
 from engineering_automation.n8n.config import N8nConfig
@@ -39,6 +43,7 @@ class ApiSettings:
     webhook_max_age_seconds: int = 300
     webhook_future_tolerance_seconds: int = 30
     webhook_receipt_ttl_seconds: int = 86400
+    webhook_receipt_database_path: str = ".data/webhook-receipts.sqlite3"
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, str]) -> ApiSettings:
@@ -94,6 +99,14 @@ class ApiSettings:
             values.get("WEBHOOK_RECEIPT_TTL_SECONDS", "86400"),
             minimum=webhook_max_age_seconds,
         )
+        webhook_receipt_database_path = values.get(
+            "WEBHOOK_RECEIPT_DATABASE_PATH",
+            ".data/webhook-receipts.sqlite3",
+        ).strip()
+        if not webhook_receipt_database_path:
+            raise ValueError("WEBHOOK_RECEIPT_DATABASE_PATH cannot be empty")
+        if webhook_receipt_database_path == ":memory:":
+            raise ValueError("WEBHOOK_RECEIPT_DATABASE_PATH must identify a durable SQLite file")
 
         return cls(
             api_key=required("AUTOMATION_API_KEY"),
@@ -109,6 +122,7 @@ class ApiSettings:
             webhook_max_age_seconds=webhook_max_age_seconds,
             webhook_future_tolerance_seconds=webhook_future_tolerance_seconds,
             webhook_receipt_ttl_seconds=webhook_receipt_ttl_seconds,
+            webhook_receipt_database_path=webhook_receipt_database_path,
         )
 
     @staticmethod
@@ -150,6 +164,7 @@ def create_environment_app() -> FastAPI:
         max_age_seconds=settings.webhook_max_age_seconds,
         future_tolerance_seconds=settings.webhook_future_tolerance_seconds,
         receipt_ttl_seconds=settings.webhook_receipt_ttl_seconds,
+        receipt_store=SqliteWebhookReceiptStore(Path(settings.webhook_receipt_database_path)),
     )
 
     async def close_clients() -> None:

@@ -34,6 +34,7 @@ Optional settings:
 | `WEBHOOK_MAX_AGE_SECONDS` | `300` | Oldest accepted signed timestamp. |
 | `WEBHOOK_FUTURE_TOLERANCE_SECONDS` | `30` | Allowed provider clock skew into the future. |
 | `WEBHOOK_RECEIPT_TTL_SECONDS` | `86400` | Source/id deduplication retention; it must be at least the maximum age. |
+| `WEBHOOK_RECEIPT_DATABASE_PATH` | `.data/webhook-receipts.sqlite3` | Durable SQLite file used for source/id receipt claims. |
 
 Start Uvicorn with the environment-backed application factory:
 
@@ -56,6 +57,24 @@ the configured service API key before trying an automation operation.
 
 The schema also documents `WebhookSignature` for inbound event requests. Webhooks use a distinct
 source-specific HMAC contract and do not accept the automation service API key.
+
+## Persist webhook receipts
+
+The environment-backed application stores authenticated webhook receipt claims in SQLite before
+dispatching an event. The default `.data/webhook-receipts.sqlite3` path is created on first use,
+including its parent directory. Set `WEBHOOK_RECEIPT_DATABASE_PATH` to a persistent filesystem
+location in production.
+
+Claims use the normalized source and provider webhook identifier as a composite key. SQLite
+transactions allow concurrent workers sharing the same database file to choose exactly one claim
+winner. A successful claim remains after a process restart until `WEBHOOK_RECEIPT_TTL_SECONDS`
+expires. Failed routed processing releases its claim so the provider can retry safely, and later
+claims remove expired rows.
+
+All workers using this adapter must share the same database file. Deployments whose replicas have
+independent filesystems should provide another implementation of the `WebhookReceiptStore` port
+backed by shared infrastructure. An in-memory SQLite path is rejected because it cannot provide
+restart durability.
 
 ## Authenticate automation requests
 

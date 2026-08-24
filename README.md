@@ -63,6 +63,13 @@ Authenticated events enter the existing deterministic routing engine; the
 first production route converts `automation.registration.requested` events
 into the established Port and n8n registration workflow.
 
+The tenth increment makes inbound idempotency durable. Production composition
+stores receipt claims in a transactional SQLite database, preserving accepted
+webhook identifiers across restarts and coordinating concurrent workers that
+share the database file. Expired claims are reclaimed automatically, while the
+application port still permits a different shared store for distributed
+deployments.
+
 ## Serve the API
 
 See [`docs/API.md`](docs/API.md) for configuration, authentication, endpoint
