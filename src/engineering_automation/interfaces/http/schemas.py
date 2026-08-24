@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,6 +15,12 @@ from engineering_automation.domain.automation import (
     CatalogReference,
     ReconciliationState,
     WorkflowReference,
+)
+from engineering_automation.domain.inbound_webhooks import WebhookIngestionResult
+from engineering_automation.events.models import (
+    DestinationResult,
+    DispatchStatus,
+    EngineeringEvent,
 )
 
 
@@ -144,3 +151,66 @@ class ApiError(ApiModel):
 
 class ApiErrorResponse(ApiModel):
     detail: ApiError
+
+
+class WebhookEventInput(ApiModel):
+    """Provider-neutral event carried by a signed webhook request."""
+
+    event_id: str = Field(min_length=1, max_length=256)
+    event_type: str = Field(min_length=1, max_length=256)
+    subject: str = Field(min_length=1, max_length=512)
+    occurred_at: datetime
+    payload: dict[str, Any] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+
+    def to_domain(self, source: str) -> EngineeringEvent:
+        return EngineeringEvent(
+            event_id=self.event_id,
+            source=source,
+            event_type=self.event_type,
+            subject=self.subject,
+            occurred_at=self.occurred_at,
+            payload=self.payload,
+            labels=self.labels,
+        )
+
+
+class DestinationResponse(ApiModel):
+    destination: str
+    status: DispatchStatus
+    duration_ms: int = Field(ge=0)
+    output: dict[str, Any] | None = None
+    error: str | None = None
+
+    @classmethod
+    def from_domain(cls, result: DestinationResult) -> DestinationResponse:
+        return cls(
+            destination=result.destination,
+            status=result.status,
+            duration_ms=result.duration_ms,
+            output=dict(result.output) if result.output is not None else None,
+            error=result.error,
+        )
+
+
+class WebhookIngestionResponse(ApiModel):
+    webhook_id: str
+    event_id: str
+    state: Literal["accepted", "duplicate"]
+    matched_rule_ids: list[str]
+    destinations: list[DestinationResponse]
+
+    @classmethod
+    def from_domain(cls, result: WebhookIngestionResult) -> WebhookIngestionResponse:
+        dispatch = result.dispatch
+        return cls(
+            webhook_id=result.webhook_id,
+            event_id=result.event_id,
+            state=result.state.value,
+            matched_rule_ids=list(dispatch.matched_rule_ids) if dispatch is not None else [],
+            destinations=(
+                [DestinationResponse.from_domain(item) for item in dispatch.results]
+                if dispatch is not None
+                else []
+            ),
+        )

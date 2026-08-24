@@ -55,6 +55,14 @@ interface. It includes strict request and response contracts, safe upstream
 errors, environment-driven composition, lifecycle cleanup, health checks, and
 generated OpenAPI, Swagger UI, and ReDoc documentation.
 
+The ninth increment adds secure inbound webhook ingestion. Source-specific
+HMAC-SHA256 signatures cover the exact timestamp and request bytes, bounded
+timestamp windows prevent replay, atomic receipt claims make delivery
+idempotent, and failed routed processing releases its claim for a safe retry.
+Authenticated events enter the existing deterministic routing engine; the
+first production route converts `automation.registration.requested` events
+into the established Port and n8n registration workflow.
+
 ## Serve the API
 
 See [`docs/API.md`](docs/API.md) for configuration, authentication, endpoint

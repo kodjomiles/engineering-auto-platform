@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Iterable, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
@@ -8,6 +9,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI
 
+from engineering_automation.application.use_cases.ingest_webhook import WebhookPayloadError
 from engineering_automation.application.use_cases.reconcile_automations import (
     ReconcileAutomations,
 )
@@ -20,6 +22,12 @@ from engineering_automation.domain.automation import (
     ReconciliationState,
     WorkflowReference,
 )
+from engineering_automation.domain.inbound_webhooks import (
+    WebhookIngestionRequest,
+    WebhookIngestionResult,
+    WebhookIngestionState,
+)
+from engineering_automation.events import DispatchReport
 from engineering_automation.interfaces.http.api import create_app
 
 API_KEY = "test-api-key"
@@ -44,11 +52,18 @@ def request(
     path: str,
     *,
     json: Any = None,
+    content: bytes | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> httpx.Response:
     async def send() -> httpx.Response:
         async with api_client(app) as client:
-            return await client.request(method, path, json=json, headers=headers)
+            return await client.request(
+                method,
+                path,
+                json=json,
+                content=content,
+                headers=headers,
+            )
 
     return asyncio.run(send())
 
@@ -97,6 +112,30 @@ class FakeReconciler:
         return AutomationReconciliationReport(outcomes)
 
 
+class FakeWebhookIngestor:
+    def __init__(self, *, duplicate: bool = False) -> None:
+        self.requests: list[WebhookIngestionRequest] = []
+        self.duplicate = duplicate
+        self.error: Exception | None = None
+
+    async def execute(self, value: WebhookIngestionRequest) -> WebhookIngestionResult:
+        self.requests.append(value)
+        if self.error is not None:
+            raise self.error
+        if self.duplicate:
+            return WebhookIngestionResult(
+                value.webhook_id,
+                "event-1",
+                WebhookIngestionState.DUPLICATE,
+            )
+        return WebhookIngestionResult(
+            value.webhook_id,
+            "event-1",
+            WebhookIngestionState.ACCEPTED,
+            DispatchReport("event-1", (), ()),
+        )
+
+
 def automation_payload(identifier: str = "automation-1") -> dict[str, Any]:
     return {
         "identifier": identifier,
@@ -123,6 +162,7 @@ def test_health_and_documentation_are_available_without_authentication() -> None
         "/health",
         "/v1/automations/register",
         "/v1/automations/reconcile",
+        "/v1/webhooks/events/{source}",
     }
     assert schema["components"]["securitySchemes"]["AutomationApiKey"] == {
         "type": "apiKey",
@@ -130,6 +170,9 @@ def test_health_and_documentation_are_available_without_authentication() -> None
         "name": "X-API-Key",
         "description": "Service API key configured by the operator.",
     }
+    assert schema["components"]["securitySchemes"]["WebhookSignature"]["name"] == (
+        "X-Webhook-Signature"
+    )
     assert schema["paths"]["/v1/automations/register"]["post"]["security"] == [
         {"AutomationApiKey": []}
     ]
@@ -139,6 +182,130 @@ def test_health_and_documentation_are_available_without_authentication() -> None
     assert {"200", "401", "409", "422", "502"}.issubset(reconcile_responses)
     assert "PORT_CLIENT_SECRET" not in schema_response.text
     assert "N8N_API_KEY" not in schema_response.text
+
+
+def webhook_body() -> bytes:
+    return json.dumps(
+        {
+            "eventId": "event-1",
+            "eventType": "deployment.completed",
+            "subject": "payments",
+            "occurredAt": "2030-01-01T00:00:00Z",
+            "payload": {"commit": "abc123"},
+            "labels": {"environment": "production"},
+        },
+        separators=(",", ":"),
+    ).encode()
+
+
+def webhook_headers(*, signature: str = "sha256=test") -> dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "X-Webhook-Id": "delivery-1",
+        "X-Webhook-Timestamp": "2000000000",
+        "X-Webhook-Signature": signature,
+    }
+
+
+def test_webhook_route_preserves_signed_body_and_translates_event_contract() -> None:
+    ingestor = FakeWebhookIngestor()
+    app = create_app(
+        FakeRegistrar(),
+        FakeReconciler(),
+        api_key=API_KEY,
+        webhook_ingestor=ingestor,
+    )
+    body = webhook_body()
+
+    response = request(
+        app,
+        "POST",
+        "/v1/webhooks/events/github",
+        content=body,
+        headers=webhook_headers(),
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "webhookId": "delivery-1",
+        "eventId": "event-1",
+        "state": "accepted",
+        "matchedRuleIds": [],
+        "destinations": [],
+    }
+    received = ingestor.requests[0]
+    assert received.raw_body == body
+    assert received.timestamp == 2_000_000_000
+    assert received.signature == "sha256=test"
+    assert received.source == "github"
+
+
+def test_duplicate_webhook_returns_success_without_a_dispatch_report() -> None:
+    app = create_app(
+        FakeRegistrar(),
+        FakeReconciler(),
+        api_key=API_KEY,
+        webhook_ingestor=FakeWebhookIngestor(duplicate=True),
+    )
+
+    response = request(
+        app,
+        "POST",
+        "/v1/webhooks/events/github",
+        content=webhook_body(),
+        headers=webhook_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "duplicate"
+    assert response.json()["destinations"] == []
+
+
+def test_webhook_route_rejects_missing_signature_and_invalid_body() -> None:
+    ingestor = FakeWebhookIngestor()
+    ingestor.error = WebhookPayloadError("invalid")
+    app = create_app(
+        FakeRegistrar(),
+        FakeReconciler(),
+        api_key=API_KEY,
+        webhook_ingestor=ingestor,
+    )
+    unsigned_headers = webhook_headers()
+    del unsigned_headers["X-Webhook-Signature"]
+
+    unsigned = request(
+        app,
+        "POST",
+        "/v1/webhooks/events/github",
+        content=webhook_body(),
+        headers=unsigned_headers,
+    )
+    malformed = request(
+        app,
+        "POST",
+        "/v1/webhooks/events/github",
+        content=b'{"eventId":"only-one-field"}',
+        headers=webhook_headers(),
+    )
+
+    assert unsigned.status_code == 401
+    assert unsigned.json()["detail"]["code"] == "invalid_webhook"
+    assert malformed.status_code == 422
+
+
+def test_webhook_route_reports_unconfigured_ingestion() -> None:
+    app = create_app(FakeRegistrar(), FakeReconciler(), api_key=API_KEY)
+
+    response = request(
+        app,
+        "POST",
+        "/v1/webhooks/events/github",
+        content=webhook_body(),
+        headers=webhook_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "webhook_ingestion_unavailable"
 
 
 def test_automation_routes_require_a_valid_api_key() -> None:

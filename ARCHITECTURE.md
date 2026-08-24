@@ -100,6 +100,31 @@ clients, wires the use cases, supplies the service API key, and closes owned cli
 application lifespan. Health and documentation routes are public. Automation operations use an
 `X-API-Key` security scheme and compare credentials in constant time.
 
+## Ingest signed engineering events
+
+Inbound webhook authentication is a separate application workflow from outbound delivery. The HTTP
+adapter preserves the exact body bytes, and `IngestWebhook` verifies the source secret and timestamp
+before invoking the JSON decoder. This ordering prevents unauthenticated payloads from probing the
+event schema.
+
+```text
+signed bytes ─> IngestWebhook ─> source secret port
+                      │
+                      ├─> event decoder port ─> EngineeringEvent
+                      ├─> receipt store port ─> atomic source/id claim
+                      └─> event processor port ─> router ─> dispatcher ─> handler
+```
+
+Receipt claims are scoped by source and webhook identifier. A duplicate is acknowledged without
+dispatching again. If decoding succeeds but a routed destination fails, the use case releases the
+claim so the provider may retry. `bootstrap/webhooks.py` selects the in-memory receipt adapter,
+static environment-backed secrets, JSON decoder, routing engine, and the first automation
+registration handler. These choices remain replaceable without changing authentication policy or
+the HTTP contract.
+
+The default receipt adapter protects one process. A multi-process or multi-replica deployment must
+supply a shared durable implementation of `WebhookReceiptStore` to preserve global idempotency.
+
 ## Compatibility packages
 
 The existing `notifications.*` and `webhooks.*` modules preserve established imports. They contain
