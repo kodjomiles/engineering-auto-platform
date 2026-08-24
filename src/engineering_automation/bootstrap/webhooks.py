@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from engineering_automation.application.ports.automation import AutomationRegistrar
+from engineering_automation.application.ports.inbound_webhooks import WebhookReceiptStore
 from engineering_automation.application.use_cases.ingest_webhook import IngestWebhook
 from engineering_automation.events import (
     Condition,
@@ -38,6 +39,7 @@ def build_webhook_ingestor(
     max_age_seconds: int = 300,
     future_tolerance_seconds: int = 30,
     receipt_ttl_seconds: int = 86400,
+    receipt_store: WebhookReceiptStore | None = None,
 ) -> IngestWebhook:
     """Wire secure ingestion to the platform's first production event route."""
 
@@ -66,7 +68,7 @@ def build_webhook_ingestor(
     )
     return IngestWebhook(
         StaticWebhookSecretProvider(secrets),
-        InMemoryWebhookReceiptStore(),
+        receipt_store if receipt_store is not None else InMemoryWebhookReceiptStore(),
         JsonWebhookEventDecoder(),
         RoutingEventProcessor(router, dispatcher),
         max_age_seconds=max_age_seconds,
